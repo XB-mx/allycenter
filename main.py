@@ -19,7 +19,7 @@ import decky
 
 # Hardware paths - these are specific to the ROG Ally running SteamOS
 BATTERY_PATH = "/sys/class/power_supply/BAT0"
-BACKLIGHT_PATH = "/sys/class/backlight/amdgpu_bl0"
+BACKLIGHT_PATH = "/sys/class/backlight/amdgpu_bl1"
 DMI_PATH = "/sys/class/dmi/id"
 ASUS_WMI_PATH = "/sys/devices/platform/asus-nb-wmi"
 ALLY_LED_PATH = "/sys/class/leds/ally:rgb:joystick_rings"
@@ -34,21 +34,21 @@ PERFORMANCE_PROFILES = {
         "name": "Download",
         "tdp": 5,
         "gpu_clock": 800,
-        "fan_curve": "quiet",
+        "fan_curve": "performance",
         "description": "Minimum power for downloads"
     },
     "silent": {
         "name": "Silent",
         "tdp": 15,
         "gpu_clock": 1200,
-        "fan_curve": "quiet",
+        "fan_curve": "performance",
         "description": "Low power, minimal fan noise"
     },
     "performance": {
         "name": "Performance", 
         "tdp": 25,
         "gpu_clock": 2200,
-        "fan_curve": "balanced",
+        "fan_curve": "performance",
         "description": "Balanced performance and thermals"
     },
     "turbo": {
@@ -72,7 +72,12 @@ class Plugin:
         """Main entry point for the plugin"""
         self.settings_path = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
         await self.load_settings()
+        await self.init()
         decky.logger.info("Ally Center initialized")
+
+    async def init(self):
+        await self.update_cpu_boost_enabled(self.settings["cpu_boost_enabled"])
+        await self.set_performance_profile(self.settings["current_profile"])
 
     async def _unload(self):
         """Cleanup when plugin is unloaded"""
@@ -840,39 +845,39 @@ class Plugin:
             
             # ROG Ally thermal policy values: 0=balanced, 1=silent/quiet, 2=turbo/performance
             # Note: Values 1 and 2 are swapped compared to other ASUS laptops
-            mode_map = {"quiet": "1", "balanced": "0", "performance": "2", "auto": "0"}
-            policy_value = mode_map.get(mode, "0")
-            
-            # Find and write to throttle_thermal_policy
-            policy_path = self._find_throttle_thermal_policy()
-            if policy_path:
-                try:
-                    with open(policy_path, 'w') as f:
-                        f.write(policy_value)
-                    decky.logger.info(f"Set fan mode: {mode} (policy={policy_value}) via {policy_path}")
-                    return True
-                except PermissionError:
-                    decky.logger.warning(f"Permission denied writing to {policy_path}")
-                    # Try with subprocess as fallback
-                    try:
-                        result = subprocess.run(
-                            ["tee", policy_path],
-                            input=policy_value,
-                            capture_output=True,
-                            text=True
-                        )
-                        if result.returncode == 0:
-                            decky.logger.info(f"Set fan mode via tee: {mode} (policy={policy_value})")
-                            return True
-                    except Exception as e:
-                        decky.logger.error(f"tee fallback failed: {e}")
-                    return False
-                except Exception as e:
-                    decky.logger.error(f"Failed to write to {policy_path}: {e}")
-                    return False
-            
-            decky.logger.warning("Fan control not available - throttle_thermal_policy not found")
-            decky.logger.info(f"Checked paths: {ASUS_WMI_PATH}/throttle_thermal_policy and hwmon subdirs")
+#             mode_map = {"quiet": "1", "balanced": "0", "performance": "2", "auto": "0"}
+#             policy_value = mode_map.get(mode, "0")
+#
+#             # Find and write to throttle_thermal_policy
+#             policy_path = self._find_throttle_thermal_policy()
+#             if policy_path:
+#                 try:
+#                     with open(policy_path, 'w') as f:
+#                         f.write(policy_value)
+#                     decky.logger.info(f"Set fan mode: {mode} (policy={policy_value}) via {policy_path}")
+#                     return True
+#                 except PermissionError:
+#                     decky.logger.warning(f"Permission denied writing to {policy_path}")
+#                     # Try with subprocess as fallback
+#                     try:
+#                         result = subprocess.run(
+#                             ["tee", policy_path],
+#                             input=policy_value,
+#                             capture_output=True,
+#                             text=True
+#                         )
+#                         if result.returncode == 0:
+#                             decky.logger.info(f"Set fan mode via tee: {mode} (policy={policy_value})")
+#                             return True
+#                     except Exception as e:
+#                         decky.logger.error(f"tee fallback failed: {e}")
+#                     return False
+#                 except Exception as e:
+#                     decky.logger.error(f"Failed to write to {policy_path}: {e}")
+#                     return False
+#
+#             decky.logger.warning("Fan control not available - throttle_thermal_policy not found")
+#             decky.logger.info(f"Checked paths: {ASUS_WMI_PATH}/throttle_thermal_policy and hwmon subdirs")
             return False
         except Exception as e:
             decky.logger.error(f"Failed to set fan mode: {e}")
@@ -959,7 +964,7 @@ class Plugin:
 
     async def set_tdp(self, tdp: int) -> bool:
         try:
-            tdp = max(5, min(30, tdp))
+            tdp = max(5, min(40, tdp))
             self.settings["custom_tdp"] = tdp
             await self.save_settings()
             
@@ -1111,22 +1116,35 @@ class Plugin:
     async def set_cpu_boost_enabled(self, enabled: bool) -> bool:
         """Enable or disable CPU boost"""
         try:
-            boost_path = "/sys/devices/system/cpu/cpufreq/boost"
-            
-            if not os.path.exists(boost_path):
-                decky.logger.warning("CPU boost control not available")
-                return False
-            
-            value = "1" if enabled else "0"
-            with open(boost_path, 'w') as f:
-                f.write(value)
-            
+
+            await self.update_cpu_boost_enabled(enabled)
             self.settings["cpu_boost_enabled"] = enabled
             await self.save_settings()
             
             decky.logger.info(f"CPU boost {'enabled' if enabled else 'disabled'}")
             return True
             
+        except PermissionError:
+            decky.logger.error("Permission denied setting CPU boost - requires root")
+            return False
+        except Exception as e:
+            decky.logger.error(f"Failed to set CPU boost: {e}")
+            return False
+    async def update_cpu_boost_enabled(self, enabled: bool) -> bool:
+        """Enable or disable CPU boost"""
+        try:
+            boost_path = "/sys/devices/system/cpu/cpufreq/boost"
+
+            if not os.path.exists(boost_path):
+                decky.logger.warning("CPU boost control not available")
+                return False
+
+            value = "1" if enabled else "0"
+            with open(boost_path, 'w') as f:
+                f.write(value)
+
+            return True
+
         except PermissionError:
             decky.logger.error("Permission denied setting CPU boost - requires root")
             return False
