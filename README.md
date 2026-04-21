@@ -1,3 +1,5 @@
+# 重要
+仅作个人存档使用
 # Ally Center
 
 A comprehensive Decky Loader plugin for the **ASUS ROG Ally** running SteamOS.
