@@ -848,9 +848,9 @@ const PerformanceSection: VFC = () => {
       const profile = profilesData?.profiles[profileId];
       const profileName = profile?.name || profileId;
       // Update fan mode UI to match profile's fan_curve
-      if (profile?.fan_curve) {
-        setCurrentFanMode(profile.fan_curve);
-      }
+      // if (profile?.fan_curve) {
+      //   setCurrentFanMode(profile.fan_curve);
+      // }
       toaster.toast({ title: "Ally Center", body: `Preset: ${profileName}` });
       // Disable TDP override when selecting a preset (backend already does this)
       setTdpOverrideState(false);
@@ -863,9 +863,9 @@ const PerformanceSection: VFC = () => {
   };
 
   const handleFanModeChange = async (mode: { data: string; label: string }) => {
-    setCurrentFanMode(mode.data);
-    await setFanMode(mode.data);
-    toaster.toast({ title: "Ally Center", body: `Fan: ${mode.label}` });
+    // setCurrentFanMode(mode.data);
+    // await setFanMode(mode.data);
+    // toaster.toast({ title: "Ally Center", body: `Fan: ${mode.label}` });
   };
 
   const handleTdpOverrideToggle = async (enabled: boolean) => {
@@ -1021,22 +1021,6 @@ const PerformanceSection: VFC = () => {
         </div>
       )}
 
-      <PanelSectionRow>
-        <DropdownItem
-          label="Fan Mode"
-          strDefaultLabel={
-            FAN_MODES.find((m) => m.data === currentFanMode)?.label || "Auto"
-          }
-          menuLabel={
-            FAN_MODES.find((m) => m.data === currentFanMode)?.label || "Auto"
-          }
-          rgOptions={FAN_MODES}
-          selectedOption={
-            FAN_MODES.find((m) => m.data === currentFanMode) || FAN_MODES[0]
-          }
-          onChange={handleFanModeChange}
-        />
-      </PanelSectionRow>
     </PanelSection>
   );
 };
